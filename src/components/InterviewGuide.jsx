@@ -196,7 +196,7 @@ const InterviewGuide = () => {
   // 处理流式进度更新
   const handleProgress = (data) => {
     // 添加调试日志
-    console.log("收到数据:", JSON.stringify(data));
+    
     
     if (data.error) {
       setError(data.error);
@@ -250,7 +250,7 @@ const InterviewGuide = () => {
     
     // 处理胜任力模型生成过程中的内容块
     if (data.content_chunk && !data.interview_guide_stream) {
-      console.log("收到胜任力模型生成内容块:", data.content_chunk);
+      
       setCompetencyModelProgress(prev => prev + data.content_chunk);
       
       // 更新总体进度信息，但不频繁更新UI

@@ -331,9 +331,6 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
       throw new Error('未提供消息内容');
     }
     
-    // 添加新消息到历史记录
-    const updatedHistory = [...messagesHistory, { role: 'user', content: message }];
-    
     // 优化发送到后端的数据
     // 1. 提取面试指南中的必要信息
     const optimizedGuide = {
@@ -343,53 +340,74 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
       }
     };
     
-    // 2. 处理消息历史记录，只保留必要的信息
-    // 获取最后一个助手消息的context，它包含了问题列表和当前状态
+    // 2. 获取最后一个助手消息的context，它包含了问题列表和当前状态
     let lastAssistantContext = null;
-    for (let i = updatedHistory.length - 1; i >= 0; i--) {
-      if (updatedHistory[i].role === 'assistant' && updatedHistory[i].context) {
-        lastAssistantContext = updatedHistory[i].context;
+    for (let i = messagesHistory.length - 1; i >= 0; i--) {
+      if (messagesHistory[i].role === 'assistant' && messagesHistory[i].context) {
+        lastAssistantContext = messagesHistory[i].context;
         break;
       }
     }
     
-    // 只保留最近的几条消息，减少数据量
-    const recentMessages = updatedHistory.slice(-6); // 保留最近的6条消息
+    // 3. 构建优化后的请求数据 - 只发送必要的信息
+    const optimizedRequest = {
+      messages_history: lastAssistantContext ? [
+        // 只发送助手消息的内容和最小化的上下文
+        (() => {
+          // 查找最后一条助手消息的内容
+          let lastAssistantContent = '';
+          for (let i = messagesHistory.length - 1; i >= 0; i--) {
+            if (messagesHistory[i].role === 'assistant') {
+              lastAssistantContent = messagesHistory[i].content;
+              break;
+            }
+          }
+          
+          // 从上下文中只提取必要的信息
+          const minimalContext = {};
+          if (typeof lastAssistantContext === 'object') {
+            // 保留当前问题索引、追问状态和问题列表
+            if (lastAssistantContext.current_question_index !== undefined) {
+              minimalContext.current_question_index = lastAssistantContext.current_question_index;
+            }
+            if (lastAssistantContext.asked_followup !== undefined) {
+              minimalContext.asked_followup = lastAssistantContext.asked_followup;
+            }
+          } else if (typeof lastAssistantContext === 'string') {
+            try {
+              const parsedContext = JSON.parse(lastAssistantContext);
+              if (parsedContext.current_question_index !== undefined) {
+                minimalContext.current_question_index = parsedContext.current_question_index;
+              }
+              if (parsedContext.asked_followup !== undefined) {
+                minimalContext.asked_followup = parsedContext.asked_followup;
+              }
+            } catch (e) {
+              console.error('解析上下文时出错:', e);
+            }
+          }
+          
+          return {
+            role: 'assistant',
+            content: lastAssistantContent,
+            context: minimalContext
+          };
+        })(),
+        { role: 'user', content: message }  // 添加用户消息到历史记录
+      ] : [
+        { role: 'user', content: message }  // 如果没有上下文，只发送用户消息
+      ]
+    };
     
-    // 处理消息中的context对象，将其转换为字符串
-    const processedHistory = recentMessages.map(msg => {
-      const processedMsg = { ...msg };
-      
-      // 如果是助手的最后一条消息，确保保留完整context
-      if (msg.role === 'assistant' && msg === recentMessages[recentMessages.length - 2]) {
-        if (msg.context && typeof msg.context === 'object') {
-          processedMsg.context = JSON.stringify(msg.context);
-        }
-      } else if (msg.context && typeof msg.context === 'object') {
-        // 对于其他消息，只保留必要的context信息
-        const minimalContext = {};
-        
-        if (msg.context.currentQuestionIndex !== undefined) {
-          minimalContext.currentQuestionIndex = msg.context.currentQuestionIndex;
-        }
-        
-        if (msg.context.askedFollowup !== undefined) {
-          minimalContext.askedFollowup = msg.context.askedFollowup;
-        }
-        
-        processedMsg.context = Object.keys(minimalContext).length > 0 
-          ? JSON.stringify(minimalContext) 
-          : undefined;
-      }
-      
-      return processedMsg;
-    });
+    // 第一次面试时需要发送面试指南信息
+    if (!lastAssistantContext) {
+      optimizedRequest.interview_guide = optimizedGuide;
+    }
+    
+    console.log('优化后的请求数据:', optimizedRequest);
     
     // 调用API服务，获取流式响应
-    const response = await api.conductAIInterview({
-      interview_guide: optimizedGuide,
-      messages_history: processedHistory
-    });
+    const response = await api.conductAIInterview(optimizedRequest);
     
     // 获取请求ID，用于后续可能的操作（如终止请求）
     const requestId = response.headers.get('X-Request-ID');
@@ -577,7 +595,7 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
             
             // 提取关键信息
             if (parsedContext.currentQuestionIndex !== undefined) {
-              optimizedContext.questionIndex = parsedContext.currentQuestionIndex;
+              optimizedContext.currentQuestionIndex = parsedContext.currentQuestionIndex;
             }
             
             if (parsedContext.isFollowUp !== undefined) {
