@@ -373,6 +373,10 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
             if (lastAssistantContext.asked_followup !== undefined) {
               minimalContext.asked_followup = lastAssistantContext.asked_followup;
             }
+            // 保留问题列表
+            if (lastAssistantContext.questions) {
+              minimalContext.questions = lastAssistantContext.questions;
+            }
           } else if (typeof lastAssistantContext === 'string') {
             try {
               const parsedContext = JSON.parse(lastAssistantContext);
@@ -381,6 +385,10 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
               }
               if (parsedContext.asked_followup !== undefined) {
                 minimalContext.asked_followup = parsedContext.asked_followup;
+              }
+              // 保留问题列表
+              if (parsedContext.questions) {
+                minimalContext.questions = parsedContext.questions;
               }
             } catch (e) {
               console.error('解析上下文时出错:', e);
@@ -583,6 +591,11 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
             optimizedContext.questionType = msg.context.questionType;
           }
           
+          // 如果有followup_reason，则添加到上下文中
+          if (msg.context.followup_reason !== undefined) {
+            optimizedContext.followup_reason = msg.context.followup_reason;
+          }
+          
           // 只有当有内容时才添加context
           if (Object.keys(optimizedContext).length > 0) {
             optimizedMsg.context = JSON.stringify(optimizedContext);
@@ -606,6 +619,11 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
               optimizedContext.questionType = parsedContext.questionType;
             }
             
+            // 如果有followup_reason，则添加到上下文中
+            if (parsedContext.followup_reason !== undefined) {
+              optimizedContext.followup_reason = parsedContext.followup_reason;
+            }
+            
             // 只有当有内容时才添加context
             if (Object.keys(optimizedContext).length > 0) {
               optimizedMsg.context = JSON.stringify(optimizedContext);
@@ -620,6 +638,10 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
       // 添加额外的标记信息
       if (msg.is_follow_up !== undefined) {
         optimizedMsg.is_follow_up = msg.is_follow_up;
+      }
+      
+      if (msg.followup_reason !== undefined) {
+        optimizedMsg.followup_reason = msg.followup_reason;
       }
       
       if (msg.question_index !== undefined) {

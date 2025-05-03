@@ -734,6 +734,11 @@ const AIInterview = ({ interviewGuide, onClose }) => {
           // 添加追问标记
           if (contextObj && contextObj.asked_followup) {
             processedMsg.is_follow_up = true;
+            
+            // 添加追问理由（如果存在）
+            if (contextObj.followup_reason) {
+              processedMsg.followup_reason = contextObj.followup_reason;
+            }
           }
           
           // 添加问题索引
