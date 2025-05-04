@@ -228,21 +228,13 @@ const InterviewGuide = () => {
     // 处理胜任力模型数据
     if (data.competency_model && !competencyModelInput.trim()) {
       try {
+        // 记录有胜任力模型数据返回，但不立即设置和渲染
+        // 只记录日志，实际渲染将在fetchInterviewGuide中统一处理
+        console.log("收到后端返回的胜任力模型数据，将在获取完整面试指南时统一处理");
         setCompetencyModelLoading(false);
-        // 尝试解析胜任力模型数据
-        let modelData = data.competency_model;
-        if (typeof modelData === 'string') {
-          modelData = JSON.parse(modelData);
-        }
-        setCompetencyModel(modelData);
         setGenerationProgress(prev => prev + "\n胜任力模型生成完成，开始生成面试指南...");
-        
-        // 滚动到胜任力模型组件
-        setTimeout(() => {
-          competencyModelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
       } catch (error) {
-        console.error("解析胜任力模型数据出错:", error, data.competency_model);
+        console.error("处理胜任力模型数据出错:", error);
         setCompetencyModelLoading(false);
       }
       return;
@@ -293,19 +285,11 @@ const InterviewGuide = () => {
     if (data.success && data.request_id) {
       console.log("面试指南生成成功，新请求ID:", data.request_id);
       setRequestId(data.request_id);
-      setGenerationProgress(prev => prev + `\n面试指南生成成功，新请求ID: ${data.request_id}，开始获取完整数据...`);
-      
-      // 获取完整的面试指南数据
-      fetchInterviewGuide(data.request_id);
-      return; // 添加return，防止继续执行后面的逻辑
+      setGenerationProgress(prev => prev + `\n面试指南生成成功，新请求ID: ${data.request_id}`);
     }
     
     // 处理最终结果
     if (data.interview_guide) {
-      // 确保将胜任力模型添加到面试指南对象中
-      if (competencyModel && !data.interview_guide.competency_model) {
-        data.interview_guide.competency_model = competencyModel;
-      }
       setInterviewGuide(data.interview_guide);
     }
     
@@ -313,20 +297,29 @@ const InterviewGuide = () => {
       setIsGenerating(false);
       setGenerationProgress(prev => prev + "\n面试指南生成完成");
       
-      // 如果有请求ID但还没有获取到面试指南，尝试再次获取
       // 优先使用消息中的request_id，如果没有则使用组件状态中的requestId
       const latestRequestId = data.request_id || requestId;
-      if (latestRequestId && !interviewGuide) {
-        console.log("面试指南生成完成，使用最新请求ID获取:", latestRequestId);
-        setGenerationProgress(prev => prev + `\n使用最新请求ID: ${latestRequestId} 获取面试指南数据...`);
+      
+      // 无论interviewGuide状态如何，只要有requestId就强制执行一次查询
+      if (latestRequestId) {
+        console.log("面试指南生成完成，强制获取完整数据，使用请求ID:", latestRequestId);
+        console.log("当前interviewGuide状态:", interviewGuide ? "已存在" : "不存在");
+        setGenerationProgress(prev => prev + `\n使用请求ID: ${latestRequestId} 获取完整面试指南数据...`);
+        
         // 更新组件状态中的requestId为最新的
         setRequestId(latestRequestId);
+        
         // 重置重试计数
         window.fetchRetryCount = 0;
+        
         // 延迟一小段时间再获取数据，确保数据已保存到数据库
         setTimeout(() => {
+          console.log("开始执行查询，请求ID:", latestRequestId);
           fetchInterviewGuideWithRetry(latestRequestId, 3); // 最多重试3次
         }, 1500); // 延长等待时间，确保数据已保存到数据库
+      } else {
+        console.warn("面试指南生成完成，但没有获取到请求ID，无法查询完整数据");
+        setGenerationProgress(prev => prev + "\n警告：没有获取到请求ID，无法查询完整数据");
       }
       
       addToast({
@@ -347,10 +340,64 @@ const InterviewGuide = () => {
       console.log("获取到面试指南数据:", guideData);
       
       if (guideData && guideData.result) {
-        // 确保将胜任力模型添加到面试指南对象中
+        // 从params中获取胜任力模型（如果存在）
+        try {
+          if (guideData.params) {
+            const params = typeof guideData.params === 'string' 
+              ? JSON.parse(guideData.params) 
+              : guideData.params;
+            
+            // 检查params中是否有competency_model字段
+            if (params.competency_model) {
+              console.log("从params中获取到胜任力模型:", params.competency_model);
+              setCompetencyModel(params.competency_model);
+              
+              // 将胜任力模型添加到面试指南对象中
+              guideData.result.competency_model = params.competency_model;
+            } else if (params.has_competency_model && params.original_request_id) {
+              // 如果params中标记有胜任力模型但没有直接提供，尝试解析其他字段
+              console.log("params中标记有胜任力模型，尝试解析其他字段");
+              
+              // 尝试从position_text或其他字段中解析JSON
+              const tryParseCompetencyModel = (fieldName) => {
+                if (!params[fieldName]) return null;
+                try {
+                  const fieldValue = params[fieldName];
+                  const parsedValue = typeof fieldValue === 'string' 
+                    ? JSON.parse(fieldValue) 
+                    : fieldValue;
+                  
+                  if (parsedValue.competency_model) {
+                    return parsedValue.competency_model;
+                  }
+                  return null;
+                } catch (e) {
+                  console.error(`解析${fieldName}中的胜任力模型失败:`, e);
+                  return null;
+                }
+              };
+              
+              // 按优先级尝试从不同字段解析
+              const modelFromParams = tryParseCompetencyModel('competency_model') || 
+                                     tryParseCompetencyModel('position_text') || 
+                                     tryParseCompetencyModel('resume_text');
+              
+              if (modelFromParams) {
+                console.log("成功从params解析出胜任力模型:", modelFromParams);
+                setCompetencyModel(modelFromParams);
+                guideData.result.competency_model = modelFromParams;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("解析params中的胜任力模型出错:", e);
+        }
+        
+        // 如果已有胜任力模型但面试指南对象中没有，则添加
         if (competencyModel && !guideData.result.competency_model) {
           guideData.result.competency_model = competencyModel;
         }
+        
         setInterviewGuide(guideData.result);
         setGenerationProgress(prev => prev + `\n面试指南数据获取成功，请求ID: ${guideRequestId}`);
         // 重置重试计数
@@ -401,10 +448,64 @@ const InterviewGuide = () => {
       console.log("获取到面试指南数据:", guideData);
       
       if (guideData && guideData.result) {
-        // 确保将胜任力模型添加到面试指南对象中
+        // 从params中获取胜任力模型（如果存在）
+        try {
+          if (guideData.params) {
+            const params = typeof guideData.params === 'string' 
+              ? JSON.parse(guideData.params) 
+              : guideData.params;
+            
+            // 检查params中是否有competency_model字段
+            if (params.competency_model) {
+              console.log("从params中获取到胜任力模型:", params.competency_model);
+              setCompetencyModel(params.competency_model);
+              
+              // 将胜任力模型添加到面试指南对象中
+              guideData.result.competency_model = params.competency_model;
+            } else if (params.has_competency_model && params.original_request_id) {
+              // 如果params中标记有胜任力模型但没有直接提供，尝试解析其他字段
+              console.log("params中标记有胜任力模型，尝试解析其他字段");
+              
+              // 尝试从position_text或其他字段中解析JSON
+              const tryParseCompetencyModel = (fieldName) => {
+                if (!params[fieldName]) return null;
+                try {
+                  const fieldValue = params[fieldName];
+                  const parsedValue = typeof fieldValue === 'string' 
+                    ? JSON.parse(fieldValue) 
+                    : fieldValue;
+                  
+                  if (parsedValue.competency_model) {
+                    return parsedValue.competency_model;
+                  }
+                  return null;
+                } catch (e) {
+                  console.error(`解析${fieldName}中的胜任力模型失败:`, e);
+                  return null;
+                }
+              };
+              
+              // 按优先级尝试从不同字段解析
+              const modelFromParams = tryParseCompetencyModel('competency_model') || 
+                                     tryParseCompetencyModel('position_text') || 
+                                     tryParseCompetencyModel('resume_text');
+              
+              if (modelFromParams) {
+                console.log("成功从params解析出胜任力模型:", modelFromParams);
+                setCompetencyModel(modelFromParams);
+                guideData.result.competency_model = modelFromParams;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("解析params中的胜任力模型出错:", e);
+        }
+        
+        // 如果已有胜任力模型但面试指南对象中没有，则添加
         if (competencyModel && !guideData.result.competency_model) {
           guideData.result.competency_model = competencyModel;
         }
+        
         setInterviewGuide(guideData.result);
         setGenerationProgress(prev => prev + `\n面试指南数据获取成功，请求ID: ${guideRequestId}`);
       } else {

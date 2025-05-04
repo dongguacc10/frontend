@@ -268,13 +268,7 @@ const AIJobMatch = () => {
           setMatchingStep(1); // 正在生成胜任力模型
         }
         
-        // 处理完整的胜任力模型
-        if (data.competency_model || data.job_competency_data) {
-          const modelData = data.competency_model || data.job_competency_data;
-          console.log('收到完整的胜任力模型:', modelData);
-          setCompetencyModel(typeof modelData === 'string' ? modelData : JSON.stringify(modelData, null, 2));
-        }
-        
+        // 不再直接设置胜任力模型，将在获取匹配分数后从数据库中查询
         // 处理匹配分数流式数据
         if (data.matching_score_stream) {
           
@@ -381,6 +375,33 @@ const AIJobMatch = () => {
                 // 设置匹配分数
                 const resultData = matchingResult.result;
                 setMatchingScore(resultData);
+                
+                // 直接从匹配结果中获取胜任力模型数据
+                try {
+                  // 打印完整的结果数据结构，帮助调试
+                  console.log('匹配结果完整数据结构:', JSON.stringify(matchingResult, null, 2));
+                  
+                  // 根据JSON数据结构，正确获取胜任力模型数据
+                  if (matchingResult.params && matchingResult.params.competency_model) {
+                    console.log('从匹配结果中获取胜任力模型数据');
+                    
+                    // 设置胜任力模型，使用正确的数据结构
+                    const competencyModelData = matchingResult.params.competency_model;
+                    
+                    setCompetencyModel(JSON.stringify(competencyModelData, null, 2));
+                    console.log('成功设置胜任力模型数据:', competencyModelData);
+                  } else {
+                    console.warn('匹配结果中未包含胜任力模型数据，完整matchingResult:', matchingResult);
+                  }
+                } catch (modelError) {
+                  console.error('处理胜任力模型数据时出错:', modelError);
+                  addToast({
+                    title: "处理胜任力模型数据出错",
+                    description: `处理胜任力模型数据时出错: ${modelError.message}`,
+                    status: "warning",
+                    shouldshowtimeoutprogess: "true"
+                  });
+                }
                 
                 // 显示成功提示
                 addToast({

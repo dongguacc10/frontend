@@ -318,7 +318,7 @@ const ResumeParser = () => {
    * 处理解析进度回调
    */
   const handleParseProgress = (data) => {
-    console.log('接收到解析进度数据:', data);
+    
     
     // 如果是文件内容，保存到fileContent状态
     if (data.is_file_content && data.file_content) {

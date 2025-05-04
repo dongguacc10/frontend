@@ -312,6 +312,29 @@ const getMatchingScore = async (requestId) => {
 };
 
 /**
+ * 通过请求ID获取职位胜任力模型
+ * 
+ * @param {string} requestId - 请求ID
+ * @returns {Promise<Object>} - 胜任力模型数据
+ */
+const getJobCompetencyModel = async (requestId) => {
+  try {
+    console.log('获取职位胜任力模型，请求ID:', requestId);
+    
+    if (!requestId) {
+      throw new Error('未提供请求ID');
+    }
+    
+    const result = await api.getJobCompetencyModel(requestId);
+    console.log('获取到的职位胜任力模型:', result);
+    return result;
+  } catch (error) {
+    console.error('获取职位胜任力模型出错:', error);
+    throw error;
+  }
+};
+
+/**
  * 简历匹配服务对象
  * 提供以下功能：
  * 1. 混合模式匹配 - matchResumeMixed（支持文件和文本的任意组合）
@@ -319,11 +342,13 @@ const getMatchingScore = async (requestId) => {
  * 3. 解析简历文件 - parseResumeFile
  * 4. 解析职位描述文件 - parsePositionFile
  * 5. 获取匹配分数结果 - getMatchingScore
+ * 6. 获取职位胜任力模型 - getJobCompetencyModel
  */
 export default {
   matchResumeMixed,
   terminateResumeMatch,
   parseResumeFile,
   parsePositionFile,
-  getMatchingScore
+  getMatchingScore,
+  getJobCompetencyModel
 };
