@@ -18,13 +18,10 @@ import {
   FileText,
   ListChecks,
   Timer,
-  Microphone,
-  MicrophoneSlash,
   ChartBar
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import interviewGuideService from "../services/interview_guide_service";
-import speechRecognitionService from "../services/speech_recognition_service";
 
 /**
  * AI面试组件
@@ -43,12 +40,6 @@ const AIInterview = ({ interviewGuide, onClose }) => {
   const [isInterviewFinished, setIsInterviewFinished] = useState(false);
   const [countdown, setCountdown] = useState(0); // 倒计时状态，单位为秒
   const [isTimeUp, setIsTimeUp] = useState(false); // 是否时间已到
-  
-  // 语音录制状态
-  const [isRecording, setIsRecording] = useState(false);
-  const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
-  const [speechRecognizer, setSpeechRecognizer] = useState(null);
-  const [transcribedText, setTranscribedText] = useState("");
   
   // 评估状态
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -563,127 +554,6 @@ const AIInterview = ({ interviewGuide, onClose }) => {
     }
   }, [isTimeUp, inputMessage, isLoading, messages]);
   
-  // 开始录音
-  const startRecording = async () => {
-    try {
-      // 创建实时语音识别实例
-      const recognizer = new speechRecognitionService.RealtimeSpeechRecognition();
-      
-      // 设置回调函数
-      recognizer.onReady(() => {
-        console.log('实时语音识别服务已就绪');
-      });
-      
-      recognizer.onResult((result) => {
-        console.log('实时识别结果:', result);
-        setInputMessage(result);
-      });
-      
-      recognizer.onFinalResult((result) => {
-        console.log('最终识别结果:', result);
-        setInputMessage(result);
-        setIsRecording(false);
-        setIsProcessingSpeech(false);
-        
-        // 自动聚焦输入框
-        inputRef.current?.focus();
-        
-        // 提示用户识别成功
-        addToast({
-          title: "识别成功",
-          description: "语音已成功转换为文字",
-          shouldshowtimeoutprogess: "true"
-        });
-        
-        // 关闭识别器
-        recognizer.disconnect();
-        setSpeechRecognizer(null);
-      });
-      
-      recognizer.onError((error) => {
-        console.error('语音识别错误:', error);
-        setIsRecording(false);
-        setIsProcessingSpeech(false);
-        
-        // 提示用户识别失败
-        addToast({
-          title: "识别失败",
-          description: `语音识别失败: ${error.message}`,
-          variant: "destructive",
-          shouldshowtimeoutprogess: "true"
-        });
-        
-        // 关闭识别器
-        recognizer.disconnect();
-        setSpeechRecognizer(null);
-      });
-      
-      // 连接WebSocket
-      await recognizer.connect();
-      
-      // 开始录音
-      await recognizer.startRecording();
-      
-      // 保存识别器实例
-      setSpeechRecognizer(recognizer);
-      setIsRecording(true);
-      
-      // 提示用户已开始录音
-      addToast({
-        title: "开始录音",
-        description: "请开始说话，完成后点击停止按钮",
-        shouldshowtimeoutprogess: "true"
-      });
-    } catch (error) {
-      console.error('无法启动语音识别:', error);
-      setIsRecording(false);
-      setIsProcessingSpeech(false);
-      
-      // 提示用户错误
-      addToast({
-        title: "错误",
-        description: `无法启动语音识别: ${error.message}`,
-        variant: "destructive",
-        shouldshowtimeoutprogess: "true"
-      });
-    }
-  };
-  
-  // 停止录音
-  const stopRecording = async () => {
-    if (speechRecognizer && isRecording) {
-      try {
-        // 提示用户正在处理语音
-        addToast({
-          title: "处理中",
-          description: "正在处理您的语音...",
-          shouldshowtimeoutprogess: "true"
-        });
-        
-        setIsProcessingSpeech(true);
-        
-        // 停止录音
-        await speechRecognizer.stopRecording();
-      } catch (error) {
-        console.error('停止录音出错:', error);
-        setIsRecording(false);
-        setIsProcessingSpeech(false);
-        
-        // 提示用户错误
-        addToast({
-          title: "错误",
-          description: `停止录音出错: ${error.message}`,
-          variant: "destructive",
-          shouldshowtimeoutprogess: "true"
-        });
-        
-        // 关闭识别器
-        speechRecognizer.disconnect();
-        setSpeechRecognizer(null);
-      }
-    }
-  };
-  
   // 评估面试结果
   const evaluateInterview = async () => {
     if (isEvaluating) return;
@@ -1196,30 +1066,15 @@ const AIInterview = ({ interviewGuide, onClose }) => {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading || isRecording || isProcessingSpeech}
+                disabled={isLoading}
               />
-              
-              {/* 语音输入按钮 */}
-              <Button
-                color={isRecording ? "destructive" : "secondary"}
-                isIconOnly
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={isLoading || isProcessingSpeech}
-                className="shadow-md"
-                title={isRecording ? "停止录音" : "语音输入"}
-              >
-                {isRecording ? 
-                  <MicrophoneSlash size={20} weight="fill" /> : 
-                  <Microphone size={20} weight="fill" />
-                }
-              </Button>
               
               {/* 发送按钮 */}
               <Button
                 color="primary"
                 isIconOnly
                 onClick={sendMessage}
-                disabled={!inputMessage.trim() || isLoading || isRecording || isProcessingSpeech}
+                disabled={!inputMessage.trim() || isLoading}
                 className="shadow-md"
               >
                 {isLoading ? <Spinner size="sm" /> : <PaperPlaneTilt size={20} weight="fill" />}
