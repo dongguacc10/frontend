@@ -196,7 +196,7 @@ const InterviewGuide = () => {
   // 处理流式进度更新
   const handleProgress = (data) => {
     // 添加调试日志
-    
+   
     
     if (data.error) {
       setError(data.error);
@@ -317,9 +317,16 @@ const InterviewGuide = () => {
       // 优先使用消息中的request_id，如果没有则使用组件状态中的requestId
       const latestRequestId = data.request_id || requestId;
       if (latestRequestId && !interviewGuide) {
-        console.log("面试指南生成完成，但尚未获取数据，尝试使用最新请求ID获取:", latestRequestId);
-        setGenerationProgress(prev => prev + `\n尝试使用最新请求ID: ${latestRequestId} 获取面试指南数据...`);
-        fetchInterviewGuide(latestRequestId);
+        console.log("面试指南生成完成，使用最新请求ID获取:", latestRequestId);
+        setGenerationProgress(prev => prev + `\n使用最新请求ID: ${latestRequestId} 获取面试指南数据...`);
+        // 更新组件状态中的requestId为最新的
+        setRequestId(latestRequestId);
+        // 重置重试计数
+        window.fetchRetryCount = 0;
+        // 延迟一小段时间再获取数据，确保数据已保存到数据库
+        setTimeout(() => {
+          fetchInterviewGuideWithRetry(latestRequestId, 3); // 最多重试3次
+        }, 1500); // 延长等待时间，确保数据已保存到数据库
       }
       
       addToast({
@@ -330,7 +337,61 @@ const InterviewGuide = () => {
     }
   };
   
-  // 获取面试指南数据
+  // 带重试机制的面试指南获取函数
+  const fetchInterviewGuideWithRetry = async (guideRequestId, maxRetries = 3) => {
+    try {
+      console.log(`尝试获取面试指南数据，请求ID: ${guideRequestId}，剩余重试次数: ${maxRetries}`);
+      setGenerationProgress(prev => prev + `\n正在获取完整的面试指南数据，请求ID: ${guideRequestId}...`);
+      
+      const guideData = await interviewGuideService.getInterviewGuide(guideRequestId);
+      console.log("获取到面试指南数据:", guideData);
+      
+      if (guideData && guideData.result) {
+        // 确保将胜任力模型添加到面试指南对象中
+        if (competencyModel && !guideData.result.competency_model) {
+          guideData.result.competency_model = competencyModel;
+        }
+        setInterviewGuide(guideData.result);
+        setGenerationProgress(prev => prev + `\n面试指南数据获取成功，请求ID: ${guideRequestId}`);
+        // 重置重试计数
+        window.fetchRetryCount = 0;
+      } else {
+        console.error("获取到的面试指南数据无效:", guideData);
+        setGenerationProgress(prev => prev + `\n面试指南数据获取失败，请求ID: ${guideRequestId}`);
+        
+        // 如果还有重试次数，则进行重试
+        if (maxRetries > 0) {
+          const retryDelay = (4 - maxRetries) * 1500; // 逐渐增加重试延迟
+          setGenerationProgress(prev => prev + `\n${retryDelay/1000}秒后将自动重试获取数据...（剩余${maxRetries}次重试）`);
+          
+          setTimeout(() => {
+            setGenerationProgress(prev => prev + `\n正在进行第${4-maxRetries}次重试...`);
+            fetchInterviewGuideWithRetry(guideRequestId, maxRetries - 1);
+          }, retryDelay);
+        } else {
+          setGenerationProgress(prev => prev + `\n多次尝试获取数据失败，请稍后手动点击"重新获取"按钮`);
+        }
+      }
+    } catch (error) {
+      console.error("获取面试指南数据出错:", error);
+      setGenerationProgress(prev => prev + `\n获取面试指南数据出错，请求ID: ${guideRequestId}, 错误: ${error.message}`);
+      
+      // 如果还有重试次数，则进行重试
+      if (maxRetries > 0) {
+        const retryDelay = (4 - maxRetries) * 1500; // 逐渐增加重试延迟
+        setGenerationProgress(prev => prev + `\n${retryDelay/1000}秒后将自动重试获取数据...（剩余${maxRetries}次重试）`);
+        
+        setTimeout(() => {
+          setGenerationProgress(prev => prev + `\n正在进行第${4-maxRetries}次重试...`);
+          fetchInterviewGuideWithRetry(guideRequestId, maxRetries - 1);
+        }, retryDelay);
+      } else {
+        setGenerationProgress(prev => prev + `\n多次尝试获取数据失败，请稍后手动点击"重新获取"按钮`);
+      }
+    }
+  };
+  
+  // 获取面试指南数据（无重试版本，用于手动触发）
   const fetchInterviewGuide = async (guideRequestId) => {
     try {
       console.log("开始获取面试指南数据，请求ID:", guideRequestId);
@@ -508,139 +569,196 @@ const InterviewGuide = () => {
         <CardBody>
           <div className="space-y-6">
             {/* 处理新格式数据 */}
-            {hasNewFormat && Object.entries(interviewGuide.interview_content_by_layer).map(([layerName, layerData], index) => (
-              <div key={`layer-${index}`} className="border-b pb-4 last:border-b-0 last:pb-0">
-                <h4 className="text-md font-semibold text-teal-700 mb-2 flex items-center">
-                  <CaretRight size={16} weight="bold" className="mr-1" />
-                  {layerName}
-                </h4>
+            {hasNewFormat && (() => {
+              // 定义层级顺序
+              const layerOrder = ["显性层", "中间层", "隐性层"];
+              
+              // 获取所有层级
+              const layers = Object.entries(interviewGuide.interview_content_by_layer);
+              
+              // 按照预定义顺序排序层级
+              const sortedLayers = layers.sort(([nameA], [nameB]) => {
+                const indexA = layerOrder.indexOf(nameA);
+                const indexB = layerOrder.indexOf(nameB);
                 
-                {/* 层级描述 */}
-                {layerData.description && (
-                  <div className="mb-3 text-gray-700 text-sm">
-                    <p>{layerData.description}</p>
-                  </div>
-                )}
+                // 如果两个名称都在预定义顺序中，按照预定义顺序排序
+                if (indexA !== -1 && indexB !== -1) {
+                  return indexA - indexB;
+                }
                 
-                {/* 维度 */}
-                {layerData.dimensions && layerData.dimensions.length > 0 && (
-                  <div className="mb-3">
-                    <span className="font-semibold text-sm text-gray-600">涵盖维度：</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {layerData.dimensions.map((dimension, dIndex) => (
-                        <span key={dIndex} className="px-2 py-1 bg-teal-100 text-teal-800 rounded-full text-sm">
-                          {dimension}
-                        </span>
-                      ))}
+                // 如果只有一个名称在预定义顺序中，将其排在前面
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                
+                // 如果都不在预定义顺序中，保持原始顺序
+                return 0;
+              });
+              
+              // 渲染排序后的层级
+              return sortedLayers.map(([layerName, layerData], index) => (
+                <div key={`layer-${index}`} className="border-b pb-4 last:border-b-0 last:pb-0">
+                  <h4 className="text-md font-semibold text-teal-700 mb-2 flex items-center">
+                    <CaretRight size={16} weight="bold" className="mr-1" />
+                    {layerName}
+                  </h4>
+                  
+                  {/* 层级描述 */}
+                  {layerData.description && (
+                    <div className="mb-3 text-gray-700 text-sm">
+                      <p>{layerData.description}</p>
                     </div>
-                  </div>
-                )}
-                
-                {/* 显性问题 - 新格式可能有 questions 或 explicit_questions */}
-                {layerData.questions && layerData.questions.length > 0 && (
-                  <div className="mb-3">
-                    <span className="font-semibold text-sm text-gray-600">问题：</span>
-                    <ul className="list-disc pl-5 mt-1 space-y-2">
-                      {layerData.questions.map((questionItem, qIndex) => {
-                        // 检查问题是否为对象格式（包含问题内容和建议回答时长）
-                        const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
-                        const questionText = isQuestionObject ? questionItem.question : questionItem;
-                        const suggestedDuration = isQuestionObject 
-                          ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
-                          : null;
-                        
-                        return (
-                          <li key={qIndex} className="text-gray-700">
-                            <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-                
-                {/* 显性问题 - 新格式可能有 explicit_questions */}
-                {layerData.explicit_questions && layerData.explicit_questions.length > 0 && (
-                  <div className="mb-3">
-                    <span className="font-semibold text-sm text-gray-600">显性层面问题（知识、技能）：</span>
-                    <ul className="list-disc pl-5 mt-1 space-y-2">
-                      {layerData.explicit_questions.map((questionItem, qIndex) => {
-                        // 检查问题是否为对象格式（包含问题内容和建议回答时长）
-                        const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
-                        const questionText = isQuestionObject ? questionItem.question : questionItem;
-                        const suggestedDuration = isQuestionObject 
-                          ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
-                          : null;
-                        
-                        return (
-                          <li key={qIndex} className="text-gray-700">
-                            <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-                
-                {/* 隐性问题 */}
-                {layerData.implicit_questions && layerData.implicit_questions.length > 0 && (
-                  <div className="mb-3">
-                    <span className="font-semibold text-sm text-gray-600">隐性层面问题（动机、价值观）：</span>
-                    <ul className="list-disc pl-5 mt-1 space-y-2">
-                      {layerData.implicit_questions.map((questionItem, qIndex) => {
-                        // 检查问题是否为对象格式（包含问题内容和建议回答时长）
-                        const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
-                        const questionText = isQuestionObject ? questionItem.question : questionItem;
-                        const suggestedDuration = isQuestionObject 
-                          ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
-                          : null;
-                        
-                        return (
-                          <li key={qIndex} className="text-gray-700">
-                            <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-                
-                {/* 评估要点 */}
-                {layerData.evaluation_points && layerData.evaluation_points.length > 0 && (
-                  <div>
-                    <span className="font-semibold text-sm text-gray-600">评估要点：</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {layerData.evaluation_points.map((point, pIndex) => (
-                        <span key={pIndex} className="px-2 py-1 bg-teal-100 text-teal-800 rounded-full text-sm">
-                          {point}
-                        </span>
-                      ))}
+                  )}
+                  
+                  {/* 维度 */}
+                  {layerData.dimensions_covered && layerData.dimensions_covered.length > 0 && (
+                    <div className="mb-3">
+                      <span className="font-semibold text-sm text-gray-600">涵盖维度：</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {layerData.dimensions_covered.map((dimension, dIndex) => (
+                          <span key={dIndex} className="px-2 py-1 bg-teal-100 text-teal-800 rounded-full text-sm">
+                            {dimension}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                  
+                  {/* 显性问题 - 新格式可能有 questions 或 explicit_questions */}
+                  {layerData.questions && layerData.questions.length > 0 && (
+                    <div className="mb-3">
+                      <span className="font-semibold text-sm text-gray-600">问题：</span>
+                      <ul className="list-disc pl-5 mt-1 space-y-2">
+                        {layerData.questions.map((questionItem, qIndex) => {
+                          // 检查问题是否为对象格式（包含问题内容和建议回答时长）
+                          const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
+                          const questionText = isQuestionObject ? questionItem.question : questionItem;
+                          const suggestedDuration = isQuestionObject 
+                            ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
+                            : null;
+                          const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
+                          
+                          return (
+                            <li key={qIndex} className="text-gray-700">
+                              <div>{questionText}</div>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                {suggestedDuration && (
+                                  <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                    <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                      建议回答时长: {suggestedDuration}
+                                    </span>
+                                  </div>
+                                )}
+                                {coreEvaluationPoint && (
+                                  <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                    <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                      考察核心点: {coreEvaluationPoint}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* 显性问题 - 新格式可能有 explicit_questions */}
+                  {layerData.explicit_questions && layerData.explicit_questions.length > 0 && (
+                    <div className="mb-3">
+                      <span className="font-semibold text-sm text-gray-600">显性层面问题（知识、技能）：</span>
+                      <ul className="list-disc pl-5 mt-1 space-y-2">
+                        {layerData.explicit_questions.map((questionItem, qIndex) => {
+                          // 检查问题是否为对象格式（包含问题内容和建议回答时长）
+                          const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
+                          const questionText = isQuestionObject ? questionItem.question : questionItem;
+                          const suggestedDuration = isQuestionObject 
+                            ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
+                            : null;
+                          const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
+                          
+                          return (
+                            <li key={qIndex} className="text-gray-700">
+                              <div>{questionText}</div>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                {suggestedDuration && (
+                                  <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                    <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                      建议回答时长: {suggestedDuration}
+                                    </span>
+                                  </div>
+                                )}
+                                {coreEvaluationPoint && (
+                                  <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                    <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                      考察核心点: {coreEvaluationPoint}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* 隐性问题 */}
+                  {layerData.implicit_questions && layerData.implicit_questions.length > 0 && (
+                    <div className="mb-3">
+                      <span className="font-semibold text-sm text-gray-600">隐性层面问题（动机、价值观）：</span>
+                      <ul className="list-disc pl-5 mt-1 space-y-2">
+                        {layerData.implicit_questions.map((questionItem, qIndex) => {
+                          // 检查问题是否为对象格式（包含问题内容和建议回答时长）
+                          const isQuestionObject = typeof questionItem === 'object' && questionItem !== null;
+                          const questionText = isQuestionObject ? questionItem.question : questionItem;
+                          const suggestedDuration = isQuestionObject 
+                            ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
+                            : null;
+                          const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
+                          
+                          return (
+                            <li key={qIndex} className="text-gray-700">
+                              <div>{questionText}</div>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                {suggestedDuration && (
+                                  <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                    <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                      建议回答时长: {suggestedDuration}
+                                    </span>
+                                  </div>
+                                )}
+                                {coreEvaluationPoint && (
+                                  <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                    <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                      考察核心点: {coreEvaluationPoint}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* 评估要点 */}
+                  {layerData.evaluation_points && layerData.evaluation_points.length > 0 && (
+                    <div>
+                      <span className="font-semibold text-sm text-gray-600">评估要点：</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {layerData.evaluation_points.map((point, pIndex) => (
+                          <span key={pIndex} className="px-2 py-1 bg-teal-100 text-teal-800 rounded-full text-sm">
+                            {point}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ));
+            })()}
             
             {/* 处理旧格式数据 */}
             {hasOldFormat && interviewGuide.interview_focus_areas.map((area, index) => (
@@ -662,17 +780,27 @@ const InterviewGuide = () => {
                         const suggestedDuration = isQuestionObject 
                           ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
                           : null;
+                        const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
                         
                         return (
                           <li key={qIndex} className="text-gray-700">
                             <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {suggestedDuration && (
+                                <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                  <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                    建议回答时长: {suggestedDuration}
+                                  </span>
+                                </div>
+                              )}
+                              {coreEvaluationPoint && (
+                                <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                  <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                    考察核心点: {coreEvaluationPoint}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </li>
                         );
                       })}
@@ -692,17 +820,27 @@ const InterviewGuide = () => {
                         const suggestedDuration = isQuestionObject 
                           ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
                           : null;
+                        const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
                         
                         return (
                           <li key={qIndex} className="text-gray-700">
                             <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {suggestedDuration && (
+                                <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                  <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                    建议回答时长: {suggestedDuration}
+                                  </span>
+                                </div>
+                              )}
+                              {coreEvaluationPoint && (
+                                <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                  <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                    考察核心点: {coreEvaluationPoint}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </li>
                         );
                       })}
@@ -722,17 +860,27 @@ const InterviewGuide = () => {
                         const suggestedDuration = isQuestionObject 
                           ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
                           : null;
+                        const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
                         
                         return (
                           <li key={qIndex} className="text-gray-700">
                             <div>{questionText}</div>
-                            {suggestedDuration && (
-                              <div className="text-xs text-teal-600 mt-1 italic flex items-center">
-                                <span className="bg-teal-50 px-2 py-0.5 rounded-full">
-                                  建议回答时长: {suggestedDuration}
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {suggestedDuration && (
+                                <div className="text-xs text-teal-600 mt-1 italic flex items-center">
+                                  <span className="bg-teal-50 px-2 py-0.5 rounded-full">
+                                    建议回答时长: {suggestedDuration}
+                                  </span>
+                                </div>
+                              )}
+                              {coreEvaluationPoint && (
+                                <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                  <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                    考察核心点: {coreEvaluationPoint}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </li>
                         );
                       })}
@@ -795,6 +943,7 @@ const InterviewGuide = () => {
                         const suggestedDuration = isQuestionObject 
                           ? (questionItem.suggested_duration || questionItem.estimated_answer_time) 
                           : null;
+                        const coreEvaluationPoint = isQuestionObject ? questionItem.core_evaluation_point : null;
                         
                         return (
                           <li key={qIndex} className="text-gray-700">
@@ -803,6 +952,13 @@ const InterviewGuide = () => {
                               <div className="text-xs text-amber-600 mt-1 italic flex items-center">
                                 <span className="bg-amber-50 px-2 py-0.5 rounded-full">
                                   建议回答时长: {suggestedDuration}
+                                </span>
+                              </div>
+                            )}
+                            {coreEvaluationPoint && (
+                              <div className="text-xs text-blue-600 mt-1 italic flex items-center">
+                                <span className="bg-blue-50 px-2 py-0.5 rounded-full">
+                                  核心考察点: {coreEvaluationPoint}
                                 </span>
                               </div>
                             )}

@@ -152,6 +152,7 @@ const generateInterviewGuide = async (options, onProgress) => {
                 
                 // 如果收到终止信号或完成信号，结束流读取
                 if (data.terminated || data.finished) {
+                  console.log('收到终止或完成信号，结束流读取:', data);
                   reader.cancel("收到终止或完成信号");
                   break;
                 }
@@ -206,8 +207,8 @@ const getInterviewGuide = async (requestId) => {
  * 
  * @param {Object} interviewGuide - 面试指南数据
  * @param {Array} messagesHistory - 聊天历史记录（可选）
- * @param {function} onProgress - 进度回调函数，用于处理流式返回的数据
- * @returns {Promise<{requestId: string, reader: ReadableStreamDefaultReader}>} - 包含请求ID和流读取器的对象
+ * @param {function} onProgress - 回调函数，用于处理返回的数据
+ * @returns {Promise<{requestId: string}>} - 包含请求ID的对象
  * @throws {Error} 当输入验证失败或API调用出错时抛出异常
  */
 const startAIInterview = async (interviewGuide, messagesHistory = [], onProgress) => {
@@ -230,80 +231,28 @@ const startAIInterview = async (interviewGuide, messagesHistory = [], onProgress
       return msg;
     });
     
-    // 调用API服务，获取流式响应
+    // 调用API服务，获取响应
     const response = await api.conductAIInterview({
       interview_guide: interviewGuide,
       messages_history: processedHistory
     });
     
-    // 获取请求ID，用于后续可能的操作（如终止请求）
-    const requestId = response.headers.get('X-Request-ID');
-    if (!requestId) {
-      throw new Error('未获取到请求ID');
-    }
-
-    // 获取响应体的读取器和解码器，用于读取流数据
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    // 启动数据流处理
-    (async () => {
-      try {
-        // 循环读取数据流
-        while (true) {
-          // 从流中读取一块数据
-          const { value, done } = await reader.read();
-          // 如果数据流结束，退出循环
-          if (done) break;
-
-          // 解码二进制数据为文本
-          const chunk = decoder.decode(value, { stream: true });
-          // 按SSE格式分割数据行
-          const lines = chunk.split('\n\n').filter(line => line.trim());
-
-          // 处理每一行数据
-          for (const line of lines) {
-            try {
-              // SSE格式的数据行以"data: "开头
-              if (line.startsWith('data: ')) {
-                // 提取JSON数据部分
-                const jsonStr = line.substring(6);
-                
-                
-                // 解析JSON数据
-                const data = JSON.parse(jsonStr);
-                
-                
-                // 调用进度回调函数，传递解析后的数据
+    // 获取请求ID
+    const requestId = response.request_id;
+    
+    // 直接调用回调函数处理响应数据
                 if (onProgress) {
-                  onProgress(data);
-                }
-                
-                // 如果收到终止信号或完成信号，结束流读取
-                if (data.terminated || data.finished) {
-                  reader.cancel("收到终止或完成信号");
-                  break;
-                }
-              }
-            } catch (parseError) {
-              console.error('解析SSE数据行时出错:', parseError);
-              console.error('出错的数据行:', line);
+      onProgress(response);
             }
-          }
-        }
-      } catch (streamError) {
-        console.error('读取流数据时出错:', streamError);
-        // 通知调用者出错了
-        if (onProgress) {
-          onProgress({ error: `读取流数据时出错: ${streamError.message}` });
-        }
-      }
-    })();
 
-    // 返回请求ID和读取器，以便调用者可以控制流读取
-    return { requestId, reader };
+    // 返回请求ID
+    return { requestId };
   } catch (error) {
     console.error('开始AI面试出错:', error);
+    // 通知调用者出错了
+    if (onProgress) {
+      onProgress({ error: `开始AI面试出错: ${error.message}` });
+    }
     throw error;
   }
 };
@@ -314,8 +263,8 @@ const startAIInterview = async (interviewGuide, messagesHistory = [], onProgress
  * @param {Object} interviewGuide - 面试指南数据
  * @param {Array} messagesHistory - 聊天历史记录
  * @param {string} message - 用户消息
- * @param {function} onProgress - 进度回调函数，用于处理流式返回的数据
- * @returns {Promise<{requestId: string, reader: ReadableStreamDefaultReader}>} - 包含请求ID和流读取器的对象
+ * @param {function} onProgress - 回调函数，用于处理返回的数据
+ * @returns {Promise<{requestId: string}>} - 包含请求ID的对象
  * @throws {Error} 当输入验证失败或API调用出错时抛出异常
  */
 const sendInterviewMessage = async (interviewGuide, messagesHistory, message, onProgress) => {
@@ -370,12 +319,25 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
             if (lastAssistantContext.current_question_index !== undefined) {
               minimalContext.current_question_index = lastAssistantContext.current_question_index;
             }
+            
             if (lastAssistantContext.asked_followup !== undefined) {
               minimalContext.asked_followup = lastAssistantContext.asked_followup;
             }
+            
             // 保留问题列表
             if (lastAssistantContext.questions) {
-              minimalContext.questions = lastAssistantContext.questions;
+              minimalContext.questions = lastAssistantContext.questions.map(q => {
+                // 确保保留core_evaluation_point字段
+                if (q.core_evaluation_point) {
+                  return { ...q };
+                }
+                return q;
+              });
+            }
+            
+            // 如果有followup_reason，则添加到上下文中
+            if (lastAssistantContext.followup_reason !== undefined) {
+              minimalContext.followup_reason = lastAssistantContext.followup_reason;
             }
           } else if (typeof lastAssistantContext === 'string') {
             try {
@@ -383,12 +345,25 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
               if (parsedContext.current_question_index !== undefined) {
                 minimalContext.current_question_index = parsedContext.current_question_index;
               }
+              
               if (parsedContext.asked_followup !== undefined) {
                 minimalContext.asked_followup = parsedContext.asked_followup;
               }
+              
               // 保留问题列表
               if (parsedContext.questions) {
-                minimalContext.questions = parsedContext.questions;
+                minimalContext.questions = parsedContext.questions.map(q => {
+                  // 确保保留core_evaluation_point字段
+                  if (q.core_evaluation_point) {
+                    return { ...q };
+                  }
+                  return q;
+                });
+              }
+              
+              // 如果有followup_reason，则添加到上下文中
+              if (parsedContext.followup_reason !== undefined) {
+                minimalContext.followup_reason = parsedContext.followup_reason;
               }
             } catch (e) {
               console.error('解析上下文时出错:', e);
@@ -414,77 +389,24 @@ const sendInterviewMessage = async (interviewGuide, messagesHistory, message, on
     
     console.log('优化后的请求数据:', optimizedRequest);
     
-    // 调用API服务，获取流式响应
+    // 调用API服务，获取响应
     const response = await api.conductAIInterview(optimizedRequest);
     
-    // 获取请求ID，用于后续可能的操作（如终止请求）
-    const requestId = response.headers.get('X-Request-ID');
-    if (!requestId) {
-      throw new Error('未获取到请求ID');
-    }
-
-    // 获取响应体的读取器和解码器，用于读取流数据
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    // 启动数据流处理
-    (async () => {
-      try {
-        // 循环读取数据流
-        while (true) {
-          // 从流中读取一块数据
-          const { value, done } = await reader.read();
-          // 如果数据流结束，退出循环
-          if (done) break;
-
-          // 解码二进制数据为文本
-          const chunk = decoder.decode(value, { stream: true });
-          // 按SSE格式分割数据行
-          const lines = chunk.split('\n\n').filter(line => line.trim());
-
-          // 处理每一行数据
-          for (const line of lines) {
-            try {
-              // SSE格式的数据行以"data: "开头
-              if (line.startsWith('data: ')) {
-                // 提取JSON数据部分
-                const jsonStr = line.substring(6);
-                
-                
-                // 解析JSON数据
-                const data = JSON.parse(jsonStr);
-                
-                
-                // 调用进度回调函数，传递解析后的数据
+    // 获取请求ID
+    const requestId = response.request_id;
+    
+    // 直接调用回调函数处理响应数据
                 if (onProgress) {
-                  onProgress(data);
-                }
-                
-                // 如果收到终止信号或完成信号，结束流读取
-                if (data.terminated || data.finished) {
-                  reader.cancel("收到终止或完成信号");
-                  break;
-                }
-              }
-            } catch (parseError) {
-              console.error('解析SSE数据行时出错:', parseError);
-              console.error('出错的数据行:', line);
+      onProgress(response);
             }
-          }
-        }
-      } catch (streamError) {
-        console.error('读取流数据时出错:', streamError);
-        // 通知调用者出错了
-        if (onProgress) {
-          onProgress({ error: `读取流数据时出错: ${streamError.message}` });
-        }
-      }
-    })();
-
-    // 返回请求ID和读取器，以便调用者可以控制流读取
-    return { requestId, reader };
+    
+    return { requestId };
   } catch (error) {
     console.error('发送面试消息出错:', error);
+    // 通知调用者出错了
+    if (onProgress) {
+      onProgress({ error: `发送面试消息出错: ${error.message}` });
+    }
     throw error;
   }
 };
@@ -596,6 +518,11 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
             optimizedContext.followup_reason = msg.context.followup_reason;
           }
           
+          // 如果有core_evaluation_point，则添加到上下文中
+          if (msg.context.core_evaluation_point !== undefined) {
+            optimizedContext.core_evaluation_point = msg.context.core_evaluation_point;
+          }
+          
           // 只有当有内容时才添加context
           if (Object.keys(optimizedContext).length > 0) {
             optimizedMsg.context = JSON.stringify(optimizedContext);
@@ -624,6 +551,11 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
               optimizedContext.followup_reason = parsedContext.followup_reason;
             }
             
+            // 如果有core_evaluation_point，则添加到上下文中
+            if (parsedContext.core_evaluation_point !== undefined) {
+              optimizedContext.core_evaluation_point = parsedContext.core_evaluation_point;
+            }
+            
             // 只有当有内容时才添加context
             if (Object.keys(optimizedContext).length > 0) {
               optimizedMsg.context = JSON.stringify(optimizedContext);
@@ -642,6 +574,10 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
       
       if (msg.followup_reason !== undefined) {
         optimizedMsg.followup_reason = msg.followup_reason;
+      }
+      
+      if (msg.core_evaluation_point !== undefined) {
+        optimizedMsg.core_evaluation_point = msg.core_evaluation_point;
       }
       
       if (msg.question_index !== undefined) {
@@ -708,6 +644,7 @@ const evaluateInterview = async (interviewGuide, messagesHistory, competencyMode
                 
                 // 如果收到终止信号或完成信号，结束流读取
                 if (data.terminated || data.finished) {
+                  console.log('收到终止或完成信号，结束流读取:', data);
                   reader.cancel("收到终止或完成信号");
                   break;
                 }

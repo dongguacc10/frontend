@@ -299,11 +299,11 @@ const ResumeChatAssistant = () => {
   
   // 处理流式响应
   const handleStreamResponse = (eventData) => {
-    console.log('收到流式响应事件:', eventData);
+
     
     // 处理流式内容 - 只在非完成事件时更新流式内容
     if (eventData.content_chunk && !eventData.finished) {
-      console.log('收到流式内容:', eventData.content_chunk);
+   
       setCurrentAssistantMessage(prev => prev + eventData.content_chunk);
     }
     

@@ -374,10 +374,10 @@ export default {
    * @param {Object} data.interview_guide - 面试指南数据
    * @param {string} [data.message] - 用户消息（可选）
    * @param {Array} [data.messages_history] - 消息历史记录（可选）
-   * @returns {Promise<Response>} - 流式响应对象
+   * @returns {Promise<Object>} - 面试对话内容
    */
   conductAIInterview: (data) =>
-    request('/interview_guide/ai_interview', 'POST', data, true),
+    request('/interview_guide/ai_interview', 'POST', data),
 
   /**
    * 终止AI面试过程

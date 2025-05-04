@@ -210,6 +210,7 @@ const AIInterview = ({ interviewGuide, onClose }) => {
       return;
     }
     
+    // 处理助手消息
     if (data.role === 'assistant') {
       setMessages(prevMessages => {
         // 检查是否已经有相同内容的消息
@@ -489,7 +490,7 @@ const AIInterview = ({ interviewGuide, onClose }) => {
             <div className="mt-1">
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div 
-                  className="bg-yellow-400 h-2.5 rounded-full transition-all duration-1000 ease-linear" 
+                  className="bg-yellow-400 h-2.5 rounded-full" 
                   style={{ width: `${progressPercentage}%` }}
                 ></div>
               </div>
@@ -685,18 +686,9 @@ const AIInterview = ({ interviewGuide, onClose }) => {
   
   // 评估面试结果
   const evaluateInterview = async () => {
-    if (messages.length === 0 || !isInterviewFinished) {
-      addToast({
-        title: "无法评估",
-        description: "面试尚未完成，无法评估结果",
-        status: "warning",
-        shouldshowtimeoutprogess: "true"
-      });
-      return;
-    }
+    if (isEvaluating) return;
     
     setIsEvaluating(true);
-    setEvaluationReport(null);
     setEvaluationStreamContent("");
     setShowEvaluation(true); // 立即显示评估界面
     setShowEvaluationProcess(true); // 显示评估生成过程
@@ -705,45 +697,73 @@ const AIInterview = ({ interviewGuide, onClose }) => {
       // 从interviewGuide中获取competencyModel
       const competencyModel = interviewGuide.competency_model || null;
       
-      // 确保消息中的context信息被正确处理
+      // 简化消息处理逻辑，直接提取必要信息
       const processedMessages = messages.map(msg => {
-        // 创建消息的副本
-        const processedMsg = { ...msg };
+        // 创建消息的副本，只保留必要字段
+        const processedMsg = { 
+          role: msg.role, 
+          content: msg.content 
+        };
         
-        // 如果context是对象，转换为字符串
-        if (processedMsg.context && typeof processedMsg.context === 'object') {
-          processedMsg.context = JSON.stringify(processedMsg.context);
-        }
-        
-        // 如果是面试官消息，确保添加必要的标记
-        if (processedMsg.role === 'assistant' && processedMsg.context) {
-          let contextObj;
+        // 如果是面试官消息，提取必要信息
+        if (msg.role === 'assistant') {
+          // 直接从消息或context中提取关键信息
+          let contextObj = null;
           
-          // 尝试解析context
-          if (typeof processedMsg.context === 'string') {
-            try {
-              contextObj = JSON.parse(processedMsg.context);
-            } catch (e) {
-              console.error('无法解析context字符串:', e);
-              contextObj = {};
-            }
-          } else if (typeof processedMsg.context === 'object') {
-            contextObj = processedMsg.context;
-          }
-          
-          // 添加追问标记
-          if (contextObj && contextObj.asked_followup) {
-            processedMsg.is_follow_up = true;
-            
-            // 添加追问理由（如果存在）
-            if (contextObj.followup_reason) {
-              processedMsg.followup_reason = contextObj.followup_reason;
+          // 如果有context，尝试解析
+          if (msg.context) {
+            if (typeof msg.context === 'string') {
+              try {
+                contextObj = JSON.parse(msg.context);
+              } catch (e) {
+                console.error('无法解析context字符串:', e);
+              }
+            } else if (typeof msg.context === 'object') {
+              contextObj = msg.context;
             }
           }
           
-          // 添加问题索引
-          if (contextObj && contextObj.current_question_index !== undefined) {
+          // 优先使用顶层字段，如果没有则从context中提取
+          
+          // 问题索引
+          if (msg.question_index !== undefined) {
+            processedMsg.question_index = msg.question_index;
+          } else if (contextObj && contextObj.current_question_index !== undefined) {
             processedMsg.question_index = contextObj.current_question_index;
+          }
+          
+          // 是否追问
+          if (msg.is_follow_up !== undefined) {
+            processedMsg.is_follow_up = msg.is_follow_up;
+          } else if (contextObj && contextObj.asked_followup) {
+            processedMsg.is_follow_up = contextObj.asked_followup;
+          }
+          
+          // 追问理由 - 无论是否需要追问，都添加理由（如果有）
+          if (msg.followup_reason) {
+            processedMsg.followup_reason = msg.followup_reason;
+          } else if (contextObj && contextObj.followup_reason) {
+            processedMsg.followup_reason = contextObj.followup_reason;
+          }
+          
+          // 核心考察点
+          if (msg.core_evaluation_point) {
+            processedMsg.core_evaluation_point = msg.core_evaluation_point;
+          } else if (contextObj && contextObj.questions && Array.isArray(contextObj.questions)) {
+            // 获取当前问题索引
+            const currentIndex = processedMsg.question_index !== undefined ? 
+              processedMsg.question_index : 
+              (contextObj.current_question_index !== undefined ? contextObj.current_question_index : -1);
+            
+            // 如果有有效的问题索引，并且问题列表中存在该索引
+            if (currentIndex >= 0 && currentIndex < contextObj.questions.length) {
+              const currentQuestion = contextObj.questions[currentIndex];
+              
+              // 如果当前问题有核心考察点，添加到消息中
+              if (currentQuestion && currentQuestion.core_evaluation_point) {
+                processedMsg.core_evaluation_point = currentQuestion.core_evaluation_point;
+              }
+            }
           }
         }
         
