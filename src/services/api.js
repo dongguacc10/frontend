@@ -84,6 +84,13 @@ const request = async (endpoint, method = 'GET', data = null, stream = false, is
       return response;
     }
     
+    // 检查Content-Type，如果是音频类型，直接返回响应
+    const contentType = response.headers.get('Content-Type');
+    if (contentType && (contentType.includes('audio/') || contentType.includes('application/octet-stream'))) {
+      console.log('检测到音频响应，返回原始响应');
+      return response;
+    }
+    
     const responseData = await response.json();
     console.log('响应数据:', responseData);
     return responseData;
@@ -171,7 +178,43 @@ export default {
       user_id: userId
     }, true),
     
-
+  /**
+   * 将文本转换为语音
+   * @param {Object} params - 语音合成参数
+   * @returns {Promise<Object>} - 语音合成结果
+   */
+  synthesizeSpeech: (params) =>
+    request('/text_to_speech/synthesize', 'POST', params),
+    
+  /**
+   * 流式将文本转换为语音
+   * @param {Object} params - 语音合成参数
+   * @returns {Promise<Response>} - 流式响应对象，可直接用于音频播放
+   */
+  synthesizeSpeechStream: (params) =>
+    request('/text_to_speech/synthesize-stream', 'POST', params, true),
+    
+  /**
+   * 获取可用的声音列表
+   * @returns {Promise<{voices: Array}>} - 声音列表
+   */
+  getAvailableVoices: () =>
+    request('/text_to_speech/voices'),
+    
+  /**
+   * 获取可用的情感列表
+   * @returns {Promise<{emotions: Array}>} - 情感列表
+   */
+  getAvailableEmotions: () =>
+    request('/text_to_speech/emotions'),
+    
+  /**
+   * 获取预设的混合音色列表
+   * @returns {Promise<{presets: Array}>} - 混合音色预设列表
+   */
+  getTimberPresets: () =>
+    request('/text_to_speech/timber-presets'),
+    
   /**
    * 与简历生成助手进行对话
    * @param {string} message - 用户消息
@@ -497,5 +540,26 @@ export default {
    */
   getInterviewEvaluation: (requestId) => {
     return request(`/interview_guide/evaluation/${requestId}`, 'GET');
+  },
+  
+  /**
+   * 获取可用的语音识别模型列表
+   * @returns {Promise<{models: Array}>} - 模型列表
+   */
+  getSpeechRecognitionModels: () => {
+    return request('/speech_recognition/models', 'POST');
+  },
+
+  /**
+   * 上传音频文件进行识别
+   * @param {FormData} formData - 包含音频文件的FormData对象
+   * @param {string} [model="paraformer-realtime-v2"] - 识别模型
+   * @param {boolean} [semanticPunctuationEnabled=true] - 是否启用语义标点
+   * @returns {Promise<Object>} - 识别结果
+   */
+  recognizeAudioFile: (formData, model = "paraformer-realtime-v2", semanticPunctuationEnabled = true) => {
+    formData.append('model', model);
+    formData.append('semantic_punctuation_enabled', semanticPunctuationEnabled);
+    return request('/speech_recognition/recognize-file', 'POST', formData, false, true);
   },
 };

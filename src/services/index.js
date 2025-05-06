@@ -7,6 +7,7 @@ import fileService from './fileService';
 import resumeChatService from './resumeChatService';
 import resumeMatchService from './resume_match_service';
 import interviewGuideService from './interview_guide_service';
+import speechRecognitionService from './speech_recognition_service';
 
 export {
   api,
@@ -14,5 +15,6 @@ export {
   fileService,
   resumeChatService,
   resumeMatchService,
-  interviewGuideService
+  interviewGuideService,
+  speechRecognitionService
 };

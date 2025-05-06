@@ -40,7 +40,9 @@ import {
   FileDoc,
   Brain,
   Notepad,
-  Buildings
+  Buildings,
+  SpeakerHigh,
+  Microphone
 } from "@phosphor-icons/react";
 import LetterGlitchBackground from "./LetterGlitchBackground";
 import CareerAssistant from "./CareerAssistant";
@@ -51,6 +53,8 @@ import JobCompetency from "./JobCompetency";
 import AIJobMatch from "./AIJobMatch";
 import InterviewGuide from "./InterviewGuide";
 import ResumeOptimizer from "./ResumeOptimizer";
+import TextToSpeech from "./TextToSpeech";
+import SpeechRecognition from "./SpeechRecognition";
 import { resumeService, careerService, fileService, resumeChatService } from "../services"; 
 
 // 工具列表数据
@@ -175,6 +179,26 @@ const tools = [
     color: 'success',
     available: true
   },
+  {
+    id: 16,
+    name: '文本转语音',
+    title: '文本转语音',
+    description: '将文本内容转换为自然流畅的语音，支持多种声音和情感',
+    icon: <SpeakerHigh size={32} weight="duotone" />,
+    status: 'active',
+    color: 'cyan',
+    available: true
+  },
+  {
+    id: 17,
+    name: '语音识别',
+    title: '语音识别',
+    description: '将语音内容转换为文本，支持文件上传和实时录音识别',
+    icon: <Microphone size={32} weight="duotone" />,
+    status: 'active',
+    color: 'orange',
+    available: true
+  },
 ];
 
 const HRToolsPage = () => {
@@ -187,6 +211,8 @@ const HRToolsPage = () => {
   const [isJobCompetencyOpen, setIsJobCompetencyOpen] = useState(false);
   const [isAIJobMatchOpen, setIsAIJobMatchOpen] = useState(false);
   const [isAIInterviewGuideOpen, setIsAIInterviewGuideOpen] = useState(false);
+  const [isTTSOpen, setIsTTSOpen] = useState(false);
+  const [isSpeechRecognitionOpen, setIsSpeechRecognitionOpen] = useState(false);
 
   // 处理工具点击
   const handleToolClick = (tool) => {
@@ -227,6 +253,12 @@ const HRToolsPage = () => {
         break;
       case 7: // 就业服务助手
         setIsCareerAssistantOpen(true);
+        break;
+      case 16: // 文本转语音
+        setIsTTSOpen(true);
+        break;
+      case 17: // 语音识别
+        setIsSpeechRecognitionOpen(true);
         break;
       default:
         addToast({
@@ -463,6 +495,36 @@ const HRToolsPage = () => {
           </DrawerHeader>
           <DrawerBody className="p-4 h-[80vh] overflow-auto">
             <InterviewGuide />
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      
+      {/* 文本转语音抽屉 */}
+      <Drawer isOpen={isTTSOpen} onClose={() => setIsTTSOpen(false)} size="xl">
+        <DrawerContent className="bg-white">
+          <DrawerHeader className="border-b">
+            <div className="flex items-center">
+              <SpeakerHigh size={24} weight="duotone" className="text-cyan-500 mr-2" />
+              <span className="font-semibold text-lg">文本转语音</span>
+            </div>
+          </DrawerHeader>
+          <DrawerBody className="p-4 h-[80vh] overflow-auto">
+            <TextToSpeech />
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      
+      {/* 语音识别抽屉 */}
+      <Drawer isOpen={isSpeechRecognitionOpen} onClose={() => setIsSpeechRecognitionOpen(false)} size="xl">
+        <DrawerContent className="bg-white">
+          <DrawerHeader className="border-b">
+            <div className="flex items-center">
+              <Microphone size={24} weight="duotone" className="text-orange-500 mr-2" />
+              <span className="font-semibold text-lg">语音识别</span>
+            </div>
+          </DrawerHeader>
+          <DrawerBody className="p-4 h-[80vh] overflow-auto">
+            <SpeechRecognition />
           </DrawerBody>
         </DrawerContent>
       </Drawer>
