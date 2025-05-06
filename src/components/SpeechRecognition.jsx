@@ -14,36 +14,37 @@ import {
   Tabs,
   Tab,
   Progress,
-  addToast
+  addToast,
+  Tooltip
 } from "@heroui/react";
 import { 
   MicrophoneStage, 
-  FileAudio, 
   Copy, 
   Trash, 
   CircleNotch,
   CheckCircle,
-  WarningCircle
+  WarningCircle,
+  Globe
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { speechRecognitionService } from "../services";
 
 const SpeechRecognition = () => {
   // 状态变量
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [recognitionResult, setRecognitionResult] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
+
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("paraformer-realtime-v2");
-  const [semanticPunctuationEnabled, setSemanticPunctuationEnabled] = useState(true);
+  const [semanticPunctuationEnabled, setSemanticPunctuationEnabled] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingStatus, setRecordingStatus] = useState("准备就绪");
   
   // 引用
-  const fileInputRef = useRef(null);
+
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -72,80 +73,7 @@ const SpeechRecognition = () => {
     };
   }, []);
   
-  // 处理文件选择
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      // 检查文件类型
-      if (!file.type.startsWith('audio/')) {
-        addToast({
-          title: "文件类型错误",
-          description: "请选择音频文件（WAV、MP3、AAC等）",
-          status: "error"
-        });
-        return;
-      }
-      
-      // 检查文件大小 (限制为 50MB)
-      if (file.size > 50 * 1024 * 1024) {
-        addToast({
-          title: "文件过大",
-          description: "音频文件大小不能超过 50MB",
-          status: "error"
-        });
-        return;
-      }
-      
-      setSelectedFile(file);
-      setRecognitionResult("");
-    }
-  };
-  
-  // 处理文件上传识别
-  const handleFileRecognition = async () => {
-    if (!selectedFile) {
-      addToast({
-        title: "请选择文件",
-        description: "请先选择一个音频文件进行识别",
-        status: "warning"
-      });
-      return;
-    }
-    
-    setIsProcessing(true);
-    setRecognitionResult("");
-    
-    try {
-      const result = await speechRecognitionService.recognizeAudioFile(selectedFile, {
-        model: selectedModel,
-        semanticPunctuationEnabled
-      });
-      
-      if (result && result.text) {
-        setRecognitionResult(result.text);
-        addToast({
-          title: "识别成功",
-          description: "音频文件识别完成",
-          status: "success"
-        });
-      } else {
-        addToast({
-          title: "识别结果为空",
-          description: "未能从音频中识别出文本",
-          status: "info"
-        });
-      }
-    } catch (error) {
-      console.error("识别失败:", error);
-      addToast({
-        title: "识别失败",
-        description: error.message || "音频文件识别过程中发生错误",
-        status: "error"
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+
   
   // 开始录音
   const startRecording = async () => {
@@ -448,10 +376,6 @@ const SpeechRecognition = () => {
   // 清空识别结果
   const clearResult = () => {
     setRecognitionResult("");
-    setSelectedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
   
   // 格式化录音时间
@@ -464,152 +388,64 @@ const SpeechRecognition = () => {
   return (
     <div className="flex flex-col h-full">
       {/* 标签页 */}
-      <Tabs 
-        aria-label="语音识别模式"
-        selectedKey={activeTab.toString()}
-        onSelectionChange={(key) => setActiveTab(parseInt(key))}
-        className="w-full"
-      >
-        <Tab 
-          key="0" 
-          title={
-            <div className="flex items-center">
-              <FileAudio weight="duotone" className="mr-2" />
-              <span>文件识别</span>
-            </div>
-          }
-        />
-        <Tab 
-          key="1" 
-          title={
-            <div className="flex items-center">
-              <MicrophoneStage weight="duotone" className="mr-2" />
-              <span>实时识别</span>
-            </div>
-          }
-        />
-      </Tabs>
-      
-      {/* 文件识别面板 */}
-      {activeTab === 0 && (
-        <Card className="mb-4">
-          <CardHeader>
-            <h3 className="text-lg font-medium">上传音频文件</h3>
-          </CardHeader>
-          <CardBody>
-            <div className="flex flex-col space-y-4">
-              {/* 文件选择区域 */}
-              <div 
-                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="audio/*"
-                  onChange={handleFileSelect}
-                />
-                <FileAudio size={48} weight="duotone" className="mx-auto mb-2 text-gray-400" />
-                <p className="mb-2 text-sm text-gray-500">点击或拖拽音频文件到此处</p>
-                <p className="text-xs text-gray-400">支持WAV、MP3、AAC等格式，最大50MB</p>
-              </div>
-              
-              {/* 已选文件信息 */}
-              {selectedFile && (
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <FileAudio size={20} weight="duotone" className="text-blue-500 mr-2" />
-                      <span className="text-sm font-medium truncate max-w-xs">
-                        {selectedFile.name}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* 模型选择和设置 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="mb-4">
-                  <div className="mb-2 text-sm font-medium">识别模型</div>
-                  <Select 
-                    aria-label="识别模型"
-                    selectedKeys={[selectedModel]}
-                    onSelectionChange={(keys) => setSelectedModel(Array.from(keys)[0])}
-                    label="识别模型"
-                  >
-                    {availableModels.map(model => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.name}
-                      </SelectItem>
-                    ))}
-                    {availableModels.length === 0 && (
-                      <SelectItem key="paraformer-realtime-v2" value="paraformer-realtime-v2">
-                        实时语音识别模型 V2
-                      </SelectItem>
-                    )}
-                  </Select>
-                </div>
-                
-                <div className="mb-4">
-                  <div className="mb-2">语义标点</div>
-                  <Switch 
-                    defaultSelected={semanticPunctuationEnabled}
-                    onValueChange={(isSelected) => setSemanticPunctuationEnabled(isSelected)}
-                    aria-label="语义标点开关"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    启用后将根据语义自动添加标点符号
-                  </p>
-                </div>
-              </div>
-              
-              {/* 操作按钮 */}
-              <div className="flex justify-end space-x-3">
-                <Button
-                  variant="outline"
-                  onClick={clearResult}
-                  isDisabled={isProcessing || (!selectedFile && !recognitionResult)}
-                >
-                  <Trash size={18} className="mr-1" />
-                  清空
-                </Button>
-                <Button
-                  colorScheme="blue"
-                  onClick={handleFileRecognition}
-                  isLoading={isProcessing}
-                  loadingText="识别中..."
-                  isDisabled={!selectedFile}
-                >
-                  开始识别
-                </Button>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
+      <div className="w-full flex items-center mb-2">
+        <MicrophoneStage weight="duotone" className="mr-2" />
+        <h2 className="text-lg font-medium">实时语音识别</h2>
+      </div>
       
       {/* 实时识别面板 */}
-      {activeTab === 1 && (
         <Card className="mb-4">
-          <CardHeader>
-            <h3 className="text-lg font-medium">实时语音识别</h3>
-          </CardHeader>
           <CardBody>
             <div className="flex flex-col space-y-4">
               {/* 模型选择和设置 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="mb-4">
-                  <div className="mb-2 text-sm font-medium">识别模型</div>
+                  <div className="mb-2 text-sm font-medium flex items-center justify-between">
+                    <span>识别模型</span>
+                    <Tooltip 
+                      content={
+                        <div className="max-w-md p-2">
+                          <div className="font-medium mb-2">支持的语种：</div>
+                          <div className="mb-3">中文（普通话及方言）、英文、日语、韩语</div>
+                          
+                          <div className="font-medium mb-2">支持的中文方言：</div>
+                          <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-sm">
+                            <span className="bg-gray-50 px-2 py-1 rounded">上海话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">吴语</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">闽南语</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">东北话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">甘肃话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">贵州话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">河南话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">湖北话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">湖南话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">江西话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">宁夏话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">山西话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">陕西话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">山东话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">四川话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">天津话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">云南话</span>
+                            <span className="bg-gray-50 px-2 py-1 rounded">粤语</span>
+                          </div>
+                        </div>
+                      }
+                      placement="bottom"
+                      className="custom-tooltip"
+                    >
+                      <div className="flex items-center text-blue-500 cursor-help hover:text-blue-600 transition-colors">
+                        <Globe size={18} weight="duotone" className="mr-1" />
+                        <span className="text-xs font-medium">支持的语言</span>
+                      </div>
+                    </Tooltip>
+                  </div>
                   <Select 
                     selectedKeys={[selectedModel]}
                     onSelectionChange={(keys) => setSelectedModel(Array.from(keys)[0])}
                     isDisabled={isRecording}
                     aria-label="识别模型选择"
+                    className="w-full min-w-[400px]"
                   >
                     {availableModels.map(model => (
                       <SelectItem key={model.id} value={model.id}>
@@ -622,19 +458,6 @@ const SpeechRecognition = () => {
                       </SelectItem>
                     )}
                   </Select>
-                </div>
-                
-                <div className="mb-4">
-                  <div className="mb-2">语义标点</div>
-                  <Switch 
-                    defaultSelected={semanticPunctuationEnabled}
-                    onValueChange={(isSelected) => setSemanticPunctuationEnabled(isSelected)}
-                    isDisabled={isRecording}
-                    aria-label="语义标点开关"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    启用后将根据语义自动添加标点符号
-                  </p>
                 </div>
               </div>
               
@@ -696,7 +519,6 @@ const SpeechRecognition = () => {
             </div>
           </CardBody>
         </Card>
-      )}
       
       {/* 识别结果区域 */}
       <Card className="flex-grow mt-4">
@@ -730,8 +552,8 @@ const SpeechRecognition = () => {
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full py-8 text-gray-400">
-              <FileAudio size={48} weight="duotone" className="mb-3" />
-              <p>上传音频文件或开始录音以获取识别结果</p>
+              <MicrophoneStage size={48} weight="duotone" className="mb-3" />
+              <p>点击麦克风按钮开始录音以获取识别结果</p>
             </div>
           )}
         </CardBody>

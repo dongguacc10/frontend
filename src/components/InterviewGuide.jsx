@@ -195,12 +195,15 @@ const InterviewGuide = () => {
   
   // 处理流式进度更新
   const handleProgress = (data) => {
-    // 添加调试日志
-   
+    // 初始化错误标志变量，用于跟踪是否有错误发生
+    let hasError = false;
+    
+    // 打印收到的数据，帮助调试
     
     if (data.error) {
       setError(data.error);
       setIsGenerating(false);
+      hasError = true; // 设置错误标志
       addToast({
         title: "生成失败",
         description: data.error,
@@ -211,6 +214,7 @@ const InterviewGuide = () => {
     
     if (data.terminated) {
       setIsGenerating(false);
+      hasError = true; // 设置错误标志
       setGenerationProgress(prev => prev + "\n生成已取消");
       return;
     }
@@ -297,29 +301,35 @@ const InterviewGuide = () => {
       setIsGenerating(false);
       setGenerationProgress(prev => prev + "\n面试指南生成完成");
       
-      // 优先使用消息中的request_id，如果没有则使用组件状态中的requestId
-      const latestRequestId = data.request_id || requestId;
-      
-      // 无论interviewGuide状态如何，只要有requestId就强制执行一次查询
-      if (latestRequestId) {
-        console.log("面试指南生成完成，强制获取完整数据，使用请求ID:", latestRequestId);
-        console.log("当前interviewGuide状态:", interviewGuide ? "已存在" : "不存在");
-        setGenerationProgress(prev => prev + `\n使用请求ID: ${latestRequestId} 获取完整面试指南数据...`);
+      // 只有在没有错误的情况下才获取面试指南数据
+      if (!hasError && data.success !== false) {
+        // 优先使用消息中的request_id，如果没有则使用组件状态中的requestId
+        const latestRequestId = data.request_id || requestId;
         
-        // 更新组件状态中的requestId为最新的
-        setRequestId(latestRequestId);
-        
-        // 重置重试计数
-        window.fetchRetryCount = 0;
-        
-        // 延迟一小段时间再获取数据，确保数据已保存到数据库
-        setTimeout(() => {
-          console.log("开始执行查询，请求ID:", latestRequestId);
-          fetchInterviewGuideWithRetry(latestRequestId, 3); // 最多重试3次
-        }, 1500); // 延长等待时间，确保数据已保存到数据库
+        // 无论interviewGuide状态如何，只要有requestId就强制执行一次查询
+        if (latestRequestId) {
+          console.log("面试指南生成完成，强制获取完整数据，使用请求ID:", latestRequestId);
+          console.log("当前interviewGuide状态:", interviewGuide ? "已存在" : "不存在");
+          setGenerationProgress(prev => prev + `\n使用请求ID: ${latestRequestId} 获取完整面试指南数据...`);
+          
+          // 更新组件状态中的requestId为最新的
+          setRequestId(latestRequestId);
+          
+          // 重置重试计数
+          window.fetchRetryCount = 0;
+          
+          // 延迟一小段时间再获取数据，确保数据已保存到数据库
+          setTimeout(() => {
+            console.log("开始执行查询，请求ID:", latestRequestId);
+            fetchInterviewGuideWithRetry(latestRequestId, 3); // 最多重试3次
+          }, 1500); // 延长等待时间，确保数据已保存到数据库
+        } else {
+          console.warn("面试指南生成完成，但没有获取到请求ID，无法查询完整数据");
+          setGenerationProgress(prev => prev + "\n警告：没有获取到请求ID，无法查询完整数据");
+        }
       } else {
-        console.warn("面试指南生成完成，但没有获取到请求ID，无法查询完整数据");
-        setGenerationProgress(prev => prev + "\n警告：没有获取到请求ID，无法查询完整数据");
+        console.log("由于有错误或生成失败，不获取面试指南数据");
+        setGenerationProgress(prev => prev + "\n由于有错误或生成失败，不获取面试指南数据");
       }
       
       addToast({

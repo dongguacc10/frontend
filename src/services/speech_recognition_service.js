@@ -26,32 +26,6 @@ const getAvailableModels = async () => {
 };
 
 /**
- * 上传音频文件进行识别
- * @param {File} file - 音频文件
- * @param {Object} options - 识别选项
- * @param {string} [options.model="paraformer-realtime-v2"] - 识别模型
- * @param {boolean} [options.semanticPunctuationEnabled=true] - 是否启用语义标点
- * @returns {Promise<Object>} - 识别结果
- */
-const recognizeAudioFile = async (file, options = {}) => {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const model = options.model || 'paraformer-realtime-v2';
-    const semanticPunctuationEnabled = options.semanticPunctuationEnabled !== false;
-    
-    console.log(`识别音频文件: ${file.name}, 模型: ${model}, 语义标点: ${semanticPunctuationEnabled}`);
-    
-    const response = await api.recognizeAudioFile(formData, model, semanticPunctuationEnabled);
-    return response;
-  } catch (error) {
-    console.error('识别音频文件失败:', error);
-    throw error;
-  }
-};
-
-/**
  * 创建WebSocket连接进行实时语音识别
  * @param {Object} options - 连接选项
  * @param {string} [options.model="paraformer-realtime-v2"] - 识别模型
@@ -114,7 +88,7 @@ const createRecognitionSocket = (options = {}) => {
       
       // 打印更详细的消息信息，帮助调试
       if (data.type === 'text' && data.data) {
-        console.log(`收到识别文本消息: ${JSON.stringify(data.data)}`);
+        
       }
       
       if (options.onMessage) {
@@ -211,7 +185,6 @@ const closeRecognitionSocket = (socket) => {
 // 导出服务对象
 const speechRecognitionService = {
   getAvailableModels,
-  recognizeAudioFile,
   createRecognitionSocket,
   sendAudioData,
   closeRecognitionSocket

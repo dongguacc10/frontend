@@ -194,12 +194,22 @@ const JobCompetency = () => {
         if (data.finished) {
           setIsLoading(false);
           
-          // 解析完成后，自动获取胜任力模型
-          if (data.request_id) {
-            // 延迟1秒后获取，确保数据已保存到数据库
-            setTimeout(() => {
-              fetchJobCompetencyModel(data.request_id);
-            }, 1000);
+          // 检查是否成功完成，而不是因为错误而结束
+          if (!data.error && data.success !== false) {
+            addToast({
+              title: "解析成功",
+              description: "职位胜任力模型解析完成",
+              status: "success",
+              shouldshowtimeoutprogess: "true"
+            });
+            
+            // 只有在成功完成时才获取胜任力模型
+            if (data.request_id) {
+              // 延迟1秒后获取，确保数据已保存到数据库
+              setTimeout(() => {
+                fetchJobCompetencyModel(data.request_id);
+              }, 1000);
+            }
           }
         }
       };
@@ -350,12 +360,22 @@ const JobCompetency = () => {
         if (data.finished) {
           setIsLoading(false);
           
-          // 解析完成后，自动获取胜任力模型
-          if (data.request_id) {
-            // 延迟1秒后获取，确保数据已保存到数据库
-            setTimeout(() => {
-              fetchJobCompetencyModel(data.request_id);
-            }, 1000);
+          // 检查是否成功完成，而不是因为错误而结束
+          if (!data.error && data.success !== false) {
+            addToast({
+              title: "解析成功",
+              description: "职位胜任力模型解析完成",
+              status: "success",
+              shouldshowtimeoutprogess: "true"
+            });
+            
+            // 只有在成功完成时才获取胜任力模型
+            if (data.request_id) {
+              // 延迟1秒后获取，确保数据已保存到数据库
+              setTimeout(() => {
+                fetchJobCompetencyModel(data.request_id);
+              }, 1000);
+            }
           }
         }
       };

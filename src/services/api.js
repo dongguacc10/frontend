@@ -550,16 +550,5 @@ export default {
     return request('/speech_recognition/models', 'POST');
   },
 
-  /**
-   * 上传音频文件进行识别
-   * @param {FormData} formData - 包含音频文件的FormData对象
-   * @param {string} [model="paraformer-realtime-v2"] - 识别模型
-   * @param {boolean} [semanticPunctuationEnabled=true] - 是否启用语义标点
-   * @returns {Promise<Object>} - 识别结果
-   */
-  recognizeAudioFile: (formData, model = "paraformer-realtime-v2", semanticPunctuationEnabled = true) => {
-    formData.append('model', model);
-    formData.append('semantic_punctuation_enabled', semanticPunctuationEnabled);
-    return request('/speech_recognition/recognize-file', 'POST', formData, false, true);
-  },
+
 };

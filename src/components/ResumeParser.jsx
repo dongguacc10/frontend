@@ -46,6 +46,7 @@ const ResumeParser = () => {
   const [customSchema, setCustomSchema] = useState(""); // 新增：自定义JSON结构模板
   const [showCustomSchema, setShowCustomSchema] = useState(false); // 新增：是否显示自定义模板输入框
   const [isLoadingResult, setIsLoadingResult] = useState(false); // 新增：是否正在加载解析结果
+  const [parseSuccess, setParseSuccess] = useState(true); // 新增：跟踪解析是否成功
   
   // 引用
   const fileInputRef = useRef(null);
@@ -61,7 +62,8 @@ const ResumeParser = () => {
   
   // 监听requestId变化，自动获取解析结果
   useEffect(() => {
-    if (requestId && !isLoading && !parsedResume && !isLoadingResult) {
+    // 只有在解析成功的情况下才自动获取解析结果
+    if (requestId && !isLoading && !parsedResume && !isLoadingResult && parseSuccess) {
       // 当获取到requestId且解析完成后，自动获取解析结果
       const timer = setTimeout(() => {
         fetchParseResult();
@@ -69,7 +71,7 @@ const ResumeParser = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [requestId, isLoading, parsedResume, isLoadingResult]);
+  }, [requestId, isLoading, parsedResume, isLoadingResult, parseSuccess]);
   
   // 清理函数 - 组件卸载时取消流式读取
   useEffect(() => {
@@ -243,6 +245,8 @@ const ResumeParser = () => {
       setIsLoading(true);
       setStreamContent("");
       setParsedResume(null);
+      // 重置解析成功状态
+      setParseSuccess(true);
       
       // 调用简历解析服务
       const { requestId, reader: streamReader } = await resumeParseService.parseResumeFileStream(
@@ -288,6 +292,8 @@ const ResumeParser = () => {
       setIsLoading(true);
       setStreamContent("");
       setParsedResume(null);
+      // 重置解析成功状态
+      setParseSuccess(true);
       
       // 调用简历解析服务
       const { requestId, reader: streamReader } = await resumeParseService.parseResumeTextStream(
@@ -340,6 +346,8 @@ const ResumeParser = () => {
     // 处理错误情况
     if (data.error) {
       setIsLoading(false);
+      // 设置解析失败状态，防止自动获取解析结果
+      setParseSuccess(false);
       addToast({
         title: "错误",
         description: data.error,
@@ -365,19 +373,28 @@ const ResumeParser = () => {
     if (data.finished) {
       setIsLoading(false);
       
-      addToast({
-        title: "成功",
-        description: "简历解析完成",
-        timeout: 3000,
-        shouldshowtimeoutprogess: "true",
-        color: "success"
-      });
-      
-      // 解析完成后自动获取解析结果
-      if (requestId) {
-        setTimeout(() => {
-          fetchParseResult();
-        }, 1000); // 延迟1秒，确保数据已经保存到数据库
+      // 检查是否成功完成，而不是因为错误而结束
+      if (!data.error && data.success !== false) {
+        // 设置解析成功状态
+        setParseSuccess(true);
+        
+        addToast({
+          title: "成功",
+          description: "简历解析完成",
+          timeout: 3000,
+          shouldshowtimeoutprogess: "true",
+          color: "success"
+        });
+        
+        // 只有在成功完成时才获取解析结果
+        if (requestId) {
+          setTimeout(() => {
+            fetchParseResult();
+          }, 1000); // 延迟1秒，确保数据已经保存到数据库
+        }
+      } else {
+        // 如果有错误或者success为false，设置解析失败状态
+        setParseSuccess(false);
       }
     } else if (!data.error && !data.terminated) {
       setIsLoading(true);

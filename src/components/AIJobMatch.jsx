@@ -255,6 +255,9 @@ const AIJobMatch = () => {
       setMatchingScore(null);
       setMatchingStep(0);
       
+      // 初始化一个错误标志变量，用于跟踪是否有错误发生
+      let hasError = false;
+      
       // 定义进度回调函数，用于处理流式返回的数据
       const handleProgress = (data) => {
         // 添加详细的调试信息，查看接收到的数据
@@ -326,6 +329,8 @@ const AIJobMatch = () => {
         // 处理错误情况
         if (data.error) {
           console.log('收到错误信息:', data.error);
+          // 设置错误标志
+          hasError = true;
           addToast({
             title: "匹配出错",
             description: data.error,
@@ -339,6 +344,8 @@ const AIJobMatch = () => {
         // 处理终止情况
         if (data.terminated) {
           console.log('收到终止信号');
+          // 设置错误标志
+          hasError = true;
           addToast({
             title: "匹配已终止",
             description: "匹配过程已被终止",
@@ -353,11 +360,13 @@ const AIJobMatch = () => {
           console.log('收到完成信号');
           setIsLoading(false);
           
-          // 获取匹配结果
-          console.log('自动获取匹配结果');
-          
-          // 使用定时器延迟执行，确保后端有足够时间保存数据
-          setTimeout(async () => {
+          // 只有在没有错误的情况下才获取匹配结果
+          if (!hasError && data.success !== false) {
+            // 获取匹配结果
+            console.log('自动获取匹配结果');
+            
+            // 使用定时器延迟执行，确保后端有足够时间保存数据
+            setTimeout(async () => {
             try {
               // 优先使用从finished消息中获取的匹配分数请求ID
               const matchRequestId = data.matching_score_request_id || requestId;
@@ -429,6 +438,7 @@ const AIJobMatch = () => {
               });
             }
           }, 1000); // 延迟1秒执行
+          }
         }
       };
       
